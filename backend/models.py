@@ -5,9 +5,6 @@ from datetime import datetime
 from dotenv import load_dotenv
 from config import DATABASE_URL
 
-# Load environment variables from .env file
-load_dotenv()
-
 # Set up SQLAlchemy
 Base = declarative_base()
 engine = create_engine(DATABASE_URL)
