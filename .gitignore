@@ -1,0 +1,10 @@
+# Virtual environment
+venv/
+
+.env
+
+# Python
+__pycache__/
+
+# Migrations
+alembic/versions/
