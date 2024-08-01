@@ -2,57 +2,30 @@
 
 1. **Create `.env` File inside backend Folder:**
 
-    Create a `.env` file in your project directory using `envExample` as a template.
+    Create a `backend.env` file in env folder of project directory using `backendExample` as a template.
 
-2. **Install Redis:**
 
-    ### For Linux
+2. **Install docker and docker-compose**
+
+    ## For Linux
+
     ```
-    sudo apt update
-    sudo apt install redis-server
-    sudo systemctl start redis-server
-    sudo systemctl enable redis-server
-    sudo systemctl status redis-server
+        sudo apt update
+        sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+        sudo apt update
+        sudo apt install -y docker-ce docker-ce-cli containerd.io
+        sudo systemctl enable docker
+        sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        docker-compose --version
+
     ```
 
-3. **Create and Activate Virtual Environment:**
+    ## For windows
 
-   Open Command Prompt (cmd) and navigate to your project directory.
+    Install `Docker Desktop` from docker website.
 
-   Create a virtual environment named `venv`:
-
-   ```
-   python -m venv venv
-   ```
-
-   Activate the virtual environment:
-   
-   ```
-   venv\Scripts\activate
-   ```
-
-
-4. **Install Dependencies:**
-
- While inside the activated virtual environment, install dependencies from `requirements.txt`:
-
- ```
- cd backend
- pip install -r requirements.txt
- ```
-
-### Using Script
-
-1. **Run `runserver.sh` Script:**
-
- Make the script executable:
-
- ```
- chmod +x runserver.sh
- ```
-
- Execute the script:
-
- ```
- ./runserver.sh
- ```

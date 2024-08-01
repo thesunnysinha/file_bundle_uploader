@@ -10,6 +10,8 @@ AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
 AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
 LAMBDA_FUNCTION_NAME = os.getenv("LAMBDA_FUNCTION_NAME")
 DATABASE_URL = os.getenv("SQL_DATABASE_URL")
+REDIS_URL = os.getenv("REDIS_URL")
+AWS_REGION= os.getenv("AWS_REGION")
 
 
 # Initialize templates

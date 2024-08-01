@@ -1,4 +1,3 @@
-# urls.py
 from fastapi import APIRouter
 from views import UploadView
 

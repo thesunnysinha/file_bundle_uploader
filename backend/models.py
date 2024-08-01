@@ -1,14 +1,7 @@
-from sqlalchemy import create_engine, Table, Column, Integer, String, DateTime, MetaData
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Table, Column, Integer, String, DateTime, MetaData
+from config.database import Base,engine
 from datetime import datetime
-from dotenv import load_dotenv
-from config import DATABASE_URL
 
-# Set up SQLAlchemy
-Base = declarative_base()
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class File(Base):
     __tablename__ = 'files'

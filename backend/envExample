@@ -1,7 +1,0 @@
-AWS_ACCESS_KEY=your-access-key
-AWS_SECRET_KEY=your-secret-key
-S3_BUCKET=your-incoming-bucket
-LAMBDA_FUNCTION_NAME=your-lambda-function-name
-S3_FINAL_BUCKET=your-final-bucket
-SQL_DATABASE_URL=postgresql://user:password@localhost:5432/yourdatabase
-ELASTICSEARCH_URL=http://localhost:9200
