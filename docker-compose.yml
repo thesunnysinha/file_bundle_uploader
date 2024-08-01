@@ -1,0 +1,81 @@
+version: "3.8"
+
+networks:
+  filebundleuploadernetwork:
+    name: filebundleuploadernetwork
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.19.0.0/16"
+          gateway: "172.19.0.1"
+
+services:
+  db:
+    image: postgres:16
+    container_name: filebundleuploaderdatabase
+    volumes:
+      - filebundleuploaderdata:/var/lib/postgresql/data/
+    env_file: ./env/db.env
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+
+  redis:
+    image: redis:latest
+    container_name: filebundleuploaderredis
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+
+  backend:
+    build: ./backend
+    container_name: filebundleuploaderbackend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    env_file: ./env/backend.env
+    volumes:
+      - ./backend/:/code/backend/
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+
+  celery_worker:
+    build: ./backend
+    container_name: filebundleuploaderceleryworker
+    env_file: ./env/backend.env
+    command: celery -A config.celery_config worker --loglevel=info
+    volumes:
+      - ./backend/:/code/backend/
+    ports:
+      - "8001:8001"
+    depends_on:
+      - backend
+      - db
+      - redis
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+
+  elasticsearch:
+    image: elasticsearch:8.14.1
+    container_name: elasticsearch
+    environment:
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      discovery.type: single-node
+    volumes:
+      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - elasticsearchdata:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+  
+volumes:
+  elasticsearchdata:
+  filebundleuploaderdata:

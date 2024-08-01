@@ -1,10 +1,12 @@
 from celery import Celery
+from config.config import REDIS_URL
 
 # Setup Celery
 celery_app = Celery(
     'tasks',
-    broker='redis://localhost:6379/0',
-    backend='redis://localhost:6379/0'
+    broker=REDIS_URL,
+    backend=REDIS_URL,
+    include=['tasks']
 )
 
 # Celery configuration
@@ -13,12 +15,6 @@ celery_app.conf.update(
     result_serializer='json',
     accept_content=['json'],
     timezone='Asia/Kolkata',
-    enable_utc=True
-)
-
-# Task routing configuration
-celery_app.conf.update(
-    task_routes={
-        'tasks.process_metadata': {'queue': 'metadata_queue'}
-    }
+    enable_utc=False,
+    broker_connection_retry_on_startup=True
 )

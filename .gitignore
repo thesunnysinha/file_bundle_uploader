@@ -6,5 +6,4 @@ venv/
 # Python
 __pycache__/
 
-# Migrations
-alembic/versions/
+backend.env
