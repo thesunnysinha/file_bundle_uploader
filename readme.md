@@ -29,3 +29,8 @@
 
     Install `Docker Desktop` from docker website.
 
+### Running Application
+
+```
+    docker-compose up --build
+```
