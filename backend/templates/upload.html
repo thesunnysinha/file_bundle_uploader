@@ -1,7 +1,7 @@
 {% extends "layout/base.html" %}
 
 {% block title %}
-Upload ZIP File
+Upload and Search Files
 {% endblock %}
 
 {% block content %}
@@ -14,16 +14,15 @@ Upload ZIP File
         <button type="submit" class="btn btn-primary">Upload</button>
     </form>
 
-    <div id="snackbar"></div>
+    <h2 class="text-center mt-5">Search Files</h2>
+    <div class="form-group">
+        <input type="text" id="searchField" class="form-control" placeholder="Search files by name, type or source zip">
+    </div>
 
-    {% if filenames %}
-        <h3 class="mt-4">Uploaded Files:</h3>
-        <ul class="list-group">
-            {% for name in filenames %}
-                <li class="list-group-item">{{ name }}</li>
-            {% endfor %}
-        </ul>
-    {% endif %}
+    <h3 class="mt-4">Files:</h3>
+    <ul id="fileList" class="list-group">
+        <!-- Dynamically populated list of files -->
+    </ul>
 
     {% if error %}
         <p class="error-message mt-3">{{ error }}</p>
@@ -33,6 +32,41 @@ Upload ZIP File
 {% block scripts %}
 <script>
     $(document).ready(function() {
+        function fetchFiles(query = '') {
+            $.ajax({
+                url: '/search/',
+                type: 'GET',
+                data: { q: query },
+                success: function(response) {
+                    var fileList = $('#fileList');
+                    fileList.empty();
+
+                    if (response.files && response.files.length > 0) {
+                        response.files.forEach(function(file) {
+                            var listItem = `
+                                <li class="list-group-item">
+                                    <strong>File Name:</strong> ${file.file_name} <br>
+                                    <strong>File Type:</strong> ${file.file_type} <br>
+                                    <strong>File Size:</strong> ${file.file_size} bytes <br>
+                                    <strong>Source Zip File Name:</strong> ${file.source_zip_file_name} <br>
+                                    <a href="/download/${file.file_name}" class="btn btn-secondary btn-sm float-right">Download</a>
+                                </li>`;
+
+                            fileList.append(listItem);
+                        });
+                    } else {
+                        fileList.append('<li class="list-group-item">No matching files found</li>');
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    showSnackbar("Search failed: " + errorThrown);
+                }
+            });
+        }
+
+        // Fetch all files on page load
+        fetchFiles();
+
         $('#uploadForm').on('submit', function(e) {
             e.preventDefault();
 
@@ -48,13 +82,19 @@ Upload ZIP File
                 success: function(response) {
                     showSnackbar("File uploaded successfully!");
                     $('#loadingModal').modal('hide');
-                    // You can add more logic here to handle the response
+                    // Fetch updated list of files
+                    fetchFiles();
                 },
                 error: function(jqXHR, textStatus, errorThrown) {
                     showSnackbar("Failed to upload file: " + errorThrown);
                     $('#loadingModal').modal('hide');
                 }
             });
+        });
+
+        $('#searchField').on('input', function() {
+            var query = $(this).val();
+            fetchFiles(query);
         });
 
         function showSnackbar(message) {
@@ -67,4 +107,5 @@ Upload ZIP File
         }
     });
 </script>
+
 {% endblock %}

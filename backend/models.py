@@ -1,5 +1,5 @@
 from sqlalchemy import Table, Column, Integer, String, DateTime, MetaData
-from config.database import Base,engine
+from config.database import Base
 from datetime import datetime
 
 
@@ -13,6 +13,4 @@ class File(Base):
     file_type = Column(String)
     source_zip_file_name = Column(String)
 
-# Create all tables in the database
-def init_db():
-    Base.metadata.create_all(bind=engine)
+
