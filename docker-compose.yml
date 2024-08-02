@@ -11,6 +11,22 @@ networks:
           gateway: "172.19.0.1"
 
 services:
+  elasticsearch:
+    image: elasticsearch:8.14.1
+    container_name: elasticsearch
+    environment:
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      discovery.type: single-node
+      ELASTIC_PASSWORD: elastic
+    volumes:
+      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - elasticsearchdata:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+
   db:
     image: postgres:16
     container_name: filebundleuploaderdatabase
@@ -31,7 +47,6 @@ services:
   backend:
     build: ./backend
     container_name: filebundleuploaderbackend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     env_file: ./env/backend.env
     volumes:
       - ./backend/:/code/backend/
@@ -40,6 +55,7 @@ services:
     depends_on:
       - db
       - redis
+      - elasticsearch
     restart: always
     networks:
       - filebundleuploadernetwork
@@ -48,7 +64,6 @@ services:
     build: ./backend
     container_name: filebundleuploaderceleryworker
     env_file: ./env/backend.env
-    command: celery -A config.celery_config worker --loglevel=info
     volumes:
       - ./backend/:/code/backend/
     ports:
@@ -57,21 +72,9 @@ services:
       - backend
       - db
       - redis
-    restart: always
-    networks:
-      - filebundleuploadernetwork
+      - elasticsearch
+    entrypoint: scripts/celery_entrypoint.sh
 
-  elasticsearch:
-    image: elasticsearch:8.14.1
-    container_name: elasticsearch
-    environment:
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
-      discovery.type: single-node
-    volumes:
-      - ./elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
-      - elasticsearchdata:/usr/share/elasticsearch/data
-    ports:
-      - 9200:9200
     restart: always
     networks:
       - filebundleuploadernetwork

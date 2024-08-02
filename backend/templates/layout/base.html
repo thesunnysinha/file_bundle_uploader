@@ -9,6 +9,14 @@
     <link rel="stylesheet" href="static/css/main.css">
 </head>
 <body>
+    <!-- Snackbar -->
+    <div id="snackbar" class="toast position-fixed bottom-0 end-0 m-3" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-body">
+        <!-- Message will be injected here -->
+        </div>
+    </div>
+    
+
     <div class="container">
         {% block content %}{% endblock %}
     </div>

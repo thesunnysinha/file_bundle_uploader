@@ -1,13 +1,11 @@
 import json
 from datetime import datetime
+from config.database import SessionLocal
 from models import File
 from config.celery_config import celery_app
 from config.elasticsearch_config import es
 from config.config import LAMBDA_FUNCTION_NAME,AWS_ACCESS_KEY, AWS_SECRET_KEY,S3_BUCKET,AWS_REGION
 import boto3
-from main import db_dependency
-
-db = db_dependency
 
 
 def configure_lambda():
@@ -40,37 +38,52 @@ def process_metadata(zip_filename):
         Payload=json.dumps(payload)
     )
 
-    print(f"response {response}")
-
     response_payload = json.loads(response['Payload'].read().decode('utf-8'))
+    response_body = response_payload.get('body')
+    processed_files = response_body.get('processed_files', [])
 
-    print(response_payload)
-    processed_files = response_payload.get('processed_files', [])
 
+    db = SessionLocal()
 
-    for file in processed_files:
-        file_name = file['file_name']
-        file_size = file['file_size']
-        file_type = file['file_type']
-        file_created_date = datetime.now()
+    try:
+        for file in processed_files:
+            file_name = file['file_name']
+            file_size = file['file_size']
+            file_type = file['file_type']
+            file_created_date = datetime.now()
 
-        # Save metadata to SQL database
-        new_file = File(
-            file_name=file_name,
-            file_size=file_size,
-            file_created_date=file_created_date,
-            file_type=file_type,
-            source_zip_file_name=zip_filename
-        )
-        db.add(new_file)
-        db.commit()
+            # Print metadata to verify
+            print(f"Processing file: {file_name}")
+            print(f"Size: {file_size}, Type: {file_type}, Created: {file_created_date}, Source ZIP: {zip_filename}")
 
-        # Index document in Elasticsearch
-        doc = {
-            'file_name': file_name,
-            'file_size': file_size,
-            'file_created_date': file_created_date,
-            'file_type': file_type,
-            'source_zip_file_name': zip_filename
-        }
-        es.index(index="files", doc_type="_doc", body=doc)
+            # Save metadata to SQL database
+            new_file = File(
+                file_name=file_name,
+                file_size=file_size,
+                file_created_date=file_created_date,
+                file_type=file_type,
+                source_zip_file_name=zip_filename
+            )
+            try:
+                db.add(new_file)
+                db.commit()
+                print(f"Saved to database: {new_file}")
+            except Exception as e:
+                db.rollback()
+                print(f"Failed to save to database: {e}")
+
+            # Index document in Elasticsearch
+            doc = {
+                'file_name': file_name,
+                'file_size': file_size,
+                'file_created_date': file_created_date,
+                'file_type': file_type,
+                'source_zip_file_name': zip_filename
+            }
+            try:
+                response = es.index(index="files", body=doc)
+                print(f"Indexed in Elasticsearch: {response}")
+            except Exception as e:
+                print(f"Failed to index in Elasticsearch: {e}")
+    finally:
+        db.close()
