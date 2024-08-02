@@ -94,3 +94,9 @@ The `docker-compose.yml` file defines the services required for the application:
 
 ## Pending Feature
 **PDF Viewer**: Implementing a PDF viewer is still pending.
+
+### Samples
+
+1. ***File Bundle Uploader***
+
+    ![Home](./samples/image.png)
