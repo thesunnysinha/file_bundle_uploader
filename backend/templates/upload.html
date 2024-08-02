@@ -48,9 +48,10 @@ Upload and Search Files
                                     <strong>File Name:</strong> ${file.file_name} <br>
                                     <strong>File Type:</strong> ${file.file_type} <br>
                                     <strong>File Size:</strong> ${file.file_size} bytes <br>
-                                    <a href="/view/${file.file_name}" class="btn btn-primary btn-sm float-right ml-2" target="_blank">View</a>
+                                    <strong>Source Zip File Name:</strong> ${file.source_zip_file_name} <br>
                                     <a href="/download/${file.file_name}" class="btn btn-secondary btn-sm float-right">Download</a>
                                 </li>`;
+
                             fileList.append(listItem);
                         });
                     } else {
