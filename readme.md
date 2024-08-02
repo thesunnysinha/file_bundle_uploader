@@ -50,7 +50,9 @@ docker-compose --version
 ## Configuration
 1. **Set up AWS credentials**: Ensure your AWS credentials are correctly configured in the environment variables or a configuration file.
 
-2 **Update environment variables**:
+2. **Update environment variables**:
+
+Create a `backend.env` file in your project directory using `backendExample` as a template
 
 ```bash
 AWS_ACCESS_KEY=your-access-key
