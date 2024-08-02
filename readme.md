@@ -35,16 +35,68 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o 
 
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-        sudo apt update
-        sudo apt install -y docker-ce docker-ce-cli containerd.io
-        sudo systemctl enable docker
-        sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        docker-compose --version
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io
+sudo systemctl enable docker
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+docker-compose --version
+```
 
-    ```
+### For Windows
+    Install Docker Desktop from the Docker website.
 
-    ## For windows
+### Setup
+## Configuration
+1. **Set up AWS credentials**: Ensure your AWS credentials are correctly configured in the environment variables or a configuration file.
 
-    Install `Docker Desktop` from docker website.
+2 **Update environment variables**:
 
+```bash
+AWS_ACCESS_KEY=your-access-key
+AWS_SECRET_KEY=your-secret-key
+AWS_REGION=your-aws-region
+
+LAMBDA_FUNCTION_NAME=your-lambda-function-name
+
+S3_BUCKET=your-incoming-bucket
+S3_FINAL_BUCKET=your-final-bucket
+
+SQL_DATABASE_URL=postgresql://postgres:postgres@db:5432/file_bundle_uploader_db
+
+ELASTICSEARCH_URL=http://elasticsearch:9200
+ELASTICSEARCH_USERNAME=elastic
+ELASTICSEARCH_PASSWORD=elastic
+
+REDIS_URL=redis://redis:6379/0
+```
+
+3. ***Build and start the services***:
+
+```bash
+docker-compose up --build
+```
+
+This command will build the Docker images and start the services defined in `docker-compose.yml`, including the FastAPI server, Celery worker, and any other dependencies.
+
+## Docker Compose Configuration
+The `docker-compose.yml` file defines the services required for the application:
+
+**fastapi**: The FastAPI server running the web application.
+**celery**: The Celery worker responsible for processing file metadata.
+**elasticsearch**: The Elasticsearch service for search functionality.
+**postgres**: The PostgreSQL service for the SQL database.
+**redis**: The Redis service for Celery.
+
+## Accessing the Application
+
+**Upload and Search Files**: Navigate to `http://localhost:8000` in your browser to access the file upload and search functionality.
+
+## Pending Feature
+**PDF Viewer**: Implementing a PDF viewer is still pending.
+
+### Samples
+
+1. ***File Bundle Uploader***
+
+    ![File Bundle Uploader](./samples/image.png)
