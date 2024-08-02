@@ -14,4 +14,9 @@ ENV PATH="/venv/bin:$PATH"
 COPY . /code/backend/
 
 WORKDIR /code/backend
+
+RUN chmod +x scripts/wait-for-it.sh scripts/entrypoint.sh scripts/celery_entrypoint.sh
+
+# Specify the entrypoint script
+ENTRYPOINT ["scripts/entrypoint.sh"]
     
