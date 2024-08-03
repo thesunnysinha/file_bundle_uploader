@@ -56,6 +56,7 @@ services:
       - db
       - redis
       - elasticsearch
+      - minio
     restart: always
     networks:
       - filebundleuploadernetwork
@@ -73,12 +74,27 @@ services:
       - db
       - redis
       - elasticsearch
+      - minio
     entrypoint: scripts/celery_entrypoint.sh
-
     restart: always
     networks:
       - filebundleuploadernetwork
   
+  minio:
+    image: minio/minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio
+    ports:
+      - "9000:9000"
+    volumes:
+      - miniodata:/data
+    restart: always
+    networks:
+      - filebundleuploadernetwork
+
 volumes:
   elasticsearchdata:
   filebundleuploaderdata:
+  miniodata:

@@ -1,89 +1,156 @@
-import json
+import io
+import zipfile
 from datetime import datetime
-from config.database import SessionLocal
-from models import File
-from config.celery_config import celery_app
+from minio import Minio
+from minio.error import S3Error
+from config.minio_config import minio_client, MINIO_BUCKET
 from config.elasticsearch_config import es
-from config.config import LAMBDA_FUNCTION_NAME,AWS_ACCESS_KEY, AWS_SECRET_KEY,S3_BUCKET,AWS_REGION
-import boto3
+from models.file import File
+from config.database import SessionLocal
+from sqlalchemy.orm import Session
+from celery import Celery
+import textract
+import PyPDF2
+import docx
+from config.celery_config import celery_app
 
+# Helper functions to process different file types
+def process_text_file(file_content):
+    return file_content.decode('utf-8')
 
-def configure_lambda():
-    # Initialize Lambda client
-    lambda_client = boto3.client(
-        'lambda',
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY,
-        region_name=AWS_REGION
-    )
+def process_pdf_file(file_content):
+    content = ""
+    with io.BytesIO(file_content) as pdf_file:
+        reader = PyPDF2.PdfFileReader(pdf_file)
+        for page_num in range(reader.numPages):
+            page = reader.getPage(page_num)
+            content += page.extract_text()
+    return content
 
-    return lambda_client
-
+def process_doc_file(file_content):
+    content = ""
+    with io.BytesIO(file_content) as doc_file:
+        doc = docx.Document(doc_file)
+        for para in doc.paragraphs:
+            content += para.text
+    return content
 
 @celery_app.task(name='tasks.process_metadata')
 def process_metadata(zip_filename):
-
-    lambda_client = configure_lambda()
-
-    # Define payload to pass to Lambda
-    payload = {
-        "bucket": S3_BUCKET,
-        "key": zip_filename
-    }
-
-    # Trigger Lambda function
-    response = lambda_client.invoke(
-        FunctionName=LAMBDA_FUNCTION_NAME,
-        InvocationType='RequestResponse',
-        Payload=json.dumps(payload)
-    )
-
-    response_payload = json.loads(response['Payload'].read().decode('utf-8'))
-    response_body = response_payload.get('body')
-    processed_files = response_body.get('processed_files', [])
-
-
-    db = SessionLocal()
-
     try:
-        for file in processed_files:
-            file_name = file['file_name']
-            file_size = file['file_size']
-            file_type = file['file_type']
-            file_created_date = datetime.now()
+        # Get ZIP file from MinIO
+        zip_data = minio_client.get_object(MINIO_BUCKET, zip_filename)
 
-            # Print metadata to verify
-            print(f"Processing file: {file_name}")
-            print(f"Size: {file_size}, Type: {file_type}, Created: {file_created_date}, Source ZIP: {zip_filename}")
+        # Initialize a variable to track the processed size
+        total_size = 0
+        chunk_size = 128 * 1024 * 1024  # 128 MB
 
-            # Save metadata to SQL database
-            new_file = File(
-                file_name=file_name,
-                file_size=file_size,
-                file_created_date=file_created_date,
-                file_type=file_type,
-                source_zip_file_name=zip_filename
-            )
-            try:
-                db.add(new_file)
-                db.commit()
-                print(f"Saved to database: {new_file}")
-            except Exception as e:
-                db.rollback()
-                print(f"Failed to save to database: {e}")
+        # Create a BytesIO buffer to hold chunks of the ZIP file
+        buffer = BytesIO()
 
-            # Index document in Elasticsearch
-            doc = {
-                'file_name': file_name,
-                'file_size': file_size,
-                'file_created_date': file_created_date,
-                'file_type': file_type,
-                'source_zip_file_name': zip_filename
-            }
-            try:
-                response = es.index(index="files", body=doc)
-                print(f"Indexed in Elasticsearch: {response}")
-            except Exception as e:
-                print(f"Failed to index in Elasticsearch: {e}")
-    finally:
-        db.close()
+        for chunk in zip_data.stream(16 * 1024):  # 16 KB chunks
+            buffer.write(chunk)
+            total_size += len(chunk)
+
+            if total_size >= chunk_size:
+                buffer.seek(0)
+                with zipfile.ZipFile(buffer, 'r') as zip_file:
+                    for file_info in zip_file.infolist():
+                        if file_info.filename.endswith(('.pdf', '.txt', '.doc')):
+                            with zip_file.open(file_info) as file:
+                                file_name = file_info.filename
+                                file_content = file.read()
+                                file_size = len(file_content)
+                                file_type = file_info.filename.split('.')[-1].lower()
+
+                                # Process content based on file type
+                                if file_type == 'txt':
+                                    content = process_text_file(file_content)
+                                elif file_type == 'pdf':
+                                    content = process_pdf_file(file_content)
+                                elif file_type == 'doc':
+                                    content = process_doc_file(file_content)
+                                else:
+                                    continue
+
+                                # Save metadata to SQL database
+                                db: Session = SessionLocal()
+                                new_file = File(
+                                    file_name=file_name,
+                                    file_size=file_size,
+                                    file_created_date=datetime.now(),
+                                    file_type=file_type,
+                                    source_zip_file_name=zip_filename,
+                                    obj_storage_id=zip_filename  # Store the ZIP filename as the object storage ID
+                                )
+                                db.add(new_file)
+                                db.commit()
+                                db.close()
+
+                                # Index document in Elasticsearch
+                                doc = {
+                                    'file_name': file_name,
+                                    'file_size': file_size,
+                                    'file_created_date': datetime.now(),
+                                    'file_type': file_type,
+                                    'source_zip_file_name': zip_filename,
+                                    'content': content  # Add content to Elasticsearch for searchability
+                                }
+                                es.index(index="files", doc_type="_doc", body=doc)
+
+                # Reset buffer and total size after processing
+                buffer = BytesIO()
+                total_size = 0
+
+        # Clean up any remaining data in the buffer
+        if total_size > 0:
+            buffer.seek(0)
+            with zipfile.ZipFile(buffer, 'r') as zip_file:
+                for file_info in zip_file.infolist():
+                    if file_info.filename.endswith(('.pdf', '.txt', '.doc')):
+                        with zip_file.open(file_info) as file:
+                            file_name = file_info.filename
+                            file_content = file.read()
+                            file_size = len(file_content)
+                            file_type = file_info.filename.split('.')[-1].lower()
+
+                            # Process content based on file type
+                            if file_type == 'txt':
+                                content = process_text_file(file_content)
+                            elif file_type == 'pdf':
+                                content = process_pdf_file(file_content)
+                            elif file_type == 'doc':
+                                content = process_doc_file(file_content)
+                            else:
+                                continue
+
+                            # Save metadata to SQL database
+                            db: Session = SessionLocal()
+                            new_file = File(
+                                file_name=file_name,
+                                file_size=file_size,
+                                file_created_date=datetime.now(),
+                                file_type=file_type,
+                                source_zip_file_name=zip_filename,
+                                obj_storage_id=zip_filename
+                            )
+                            db.add(new_file)
+                            db.commit()
+                            db.close()
+
+                            # Index document in Elasticsearch
+                            doc = {
+                                'file_name': file_name,
+                                'file_size': file_size,
+                                'file_created_date': datetime.now(),
+                                'file_type': file_type,
+                                'source_zip_file_name': zip_filename,
+                                'content': content
+                            }
+                            es.index(index="files", doc_type="_doc", body=doc)
+
+        # Delete the ZIP file from MinIO
+        minio_client.remove_object(MINIO_BUCKET, zip_filename)
+
+    except S3Error as e:
+        print(f"Error processing ZIP file: {e}")

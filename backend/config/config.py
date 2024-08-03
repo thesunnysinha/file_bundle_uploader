@@ -5,16 +5,11 @@ from fastapi.templating import Jinja2Templates
 
 load_dotenv()
 
-# AWS
-S3_BUCKET = os.getenv("S3_BUCKET")
-S3_FINAL_BUCKET = os.getenv("S3_FINAL_BUCKET")
-
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
-AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
-AWS_REGION= os.getenv("AWS_REGION")
-
-#LAMBDA
-LAMBDA_FUNCTION_NAME = os.getenv("LAMBDA_FUNCTION_NAME")
+#Minio
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET")
 
 # Database
 DATABASE_URL = os.getenv("SQL_DATABASE_URL")
