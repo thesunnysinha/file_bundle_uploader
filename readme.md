@@ -1,101 +1,114 @@
-# File Bundle Uploader and Viewer
+# File Bundle Uploader
 
-## Overview
-
-This project is a web application designed to allow users to upload ZIP files containing documents, view file metadata, and search for files based on various attributes. The application is built using FastAPI for the backend, integrates with Elasticsearch for search functionality, and uses Amazon S3 for file storage. Celery is used for asynchronous processing of file metadata.
+This is a FastAPI application for uploading, processing, searching, viewing, and downloading files. The application uses MinIO for object storage, Elasticsearch for searching, and Celery for background processing.
 
 ## Features
 
-- **File Upload**: Upload ZIP files containing documents, which are stored in an Amazon S3 bucket.
-- **File Metadata Processing**: Process metadata asynchronously using Celery, storing it in a SQL database and Elasticsearch.
-- **Search Functionality**: Search for files by name, type, or source ZIP file name, with results fetched from Elasticsearch.
-- **View File Content**: View the content of text files directly in the browser and download files as needed.
-- **Download File**: Download files stored in the S3 bucket.
+- Upload ZIP files containing `.pdf`, `.txt`, and `.doc` files.
+- Extract and index the content of files for search.
+- View and download files from MinIO.
+- Search for files based on their content and metadata.
+
+## Requirements
+
+- Python 3.8+
+- Docker
+- Docker Compose
 
 ## Technologies
 
 - **Backend**: FastAPI
 - **Search Engine**: Elasticsearch
 - **Database**: SQL (SQLAlchemy)
-- **File Storage**: Amazon S3
+- **File Storage**: Minio
 - **Asynchronous Tasks**: Celery
 - **Frontend**: HTML, Bootstrap, JavaScript
 - **Containerization**: Docker and Docker Compose
 
-## Prerequisites
+## Setup
 
-### Install Docker and Docker Compose
+1. **Clone the repository**
 
-#### For Linux
+    ```bash
+    git clone <repository_url>
+    cd file-bundle-uploader
+    ```
 
-```bash
-sudo apt update
-sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+2. **Create a `.env` file**
 
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    Create a `.env` file in the root directory and add the following environment variables:
 
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io
-sudo systemctl enable docker
-sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-docker-compose --version
-```
+    ```env
+    DATABASE_URL=postgresql://user:password@db:5432/database
+    ELASTICSEARCH_URL=http://elasticsearch:9200
+    MINIO_URL=http://minio:9000
+    MINIO_ACCESS_KEY=minio
+    MINIO_SECRET_KEY=minio123
+    MINIO_BUCKET=uploads
+    CELERY_BROKER_URL=redis://redis:6379/0
+    CELERY_RESULT_BACKEND=redis://redis:6379/0
+    ```
 
-### For Windows
-    Install Docker Desktop from the Docker website.
+3. **Build and start the services**
 
-### Setup
-## Configuration
-1. **Set up AWS credentials**: Ensure your AWS credentials are correctly configured in the environment variables or a configuration file.
+    ```bash
+    docker-compose up --build
+    ```
 
-2. **Update environment variables**:
+    This command will build the Docker images and start the containers for the FastAPI app, PostgreSQL, Elasticsearch, MinIO, Redis, and Celery worker.
 
-Create a `backend.env` file in your project directory using `backendExample` as a template
+## Endpoints
 
-```bash
-AWS_ACCESS_KEY=your-access-key
-AWS_SECRET_KEY=your-secret-key
-AWS_REGION=your-aws-region
+### Upload a ZIP file
 
-LAMBDA_FUNCTION_NAME=your-lambda-function-name
+- **URL**: `/upload/`
+- **Method**: `PUT`
+- **Request**:
+    - `file`: The ZIP file to be uploaded.
+- **Response**:
+    - Renders the upload form with a success or error message.
 
-S3_BUCKET=your-incoming-bucket
-S3_FINAL_BUCKET=your-final-bucket
+### Search for files
 
-SQL_DATABASE_URL=postgresql://postgres:postgres@db:5432/file_bundle_uploader_db
+- **URL**: `/search/`
+- **Method**: `GET`
+- **Query Parameters**:
+    - `q`: The search query.
+- **Response**:
+    - JSON object containing the search results.
 
-ELASTICSEARCH_URL=http://elasticsearch:9200
-ELASTICSEARCH_USERNAME=elastic
-ELASTICSEARCH_PASSWORD=elastic
+### Download a file
 
-REDIS_URL=redis://redis:6379/0
-```
+- **URL**: `/download/{obj_storage_id}`
+- **Method**: `GET`
+- **Path Parameters**:
+    - `obj_storage_id`: The ID of the object in MinIO.
+- **Response**:
+    - The file as a downloadable response.
 
-3. ***Build and start the services***:
+### View a file
 
-```bash
-docker-compose up --build
-```
+- **URL**: `/view/{obj_storage_id}`
+- **Method**: `GET`
+- **Path Parameters**:
+    - `obj_storage_id`: The ID of the object in MinIO.
+- **Response**:
+    - Renders the content of the file.
 
-This command will build the Docker images and start the services defined in `docker-compose.yml`, including the FastAPI server, Celery worker, and any other dependencies.
+## Project Structure
 
-## Docker Compose Configuration
-The `docker-compose.yml` file defines the services required for the application:
+- `app`: Contains the FastAPI application.
+- `config`: Configuration files for the database, Elasticsearch, MinIO, and Celery.
+- `models`: SQLAlchemy models.
+- `templates`: HTML templates for rendering the upload form and file view.
+- `tasks`: Celery tasks for background processing.
 
-**fastapi**: The FastAPI server running the web application.
-**celery**: The Celery worker responsible for processing file metadata.
-**elasticsearch**: The Elasticsearch service for search functionality.
-**postgres**: The PostgreSQL service for the SQL database.
-**redis**: The Redis service for Celery.
 
 ## Accessing the Application
 
 **Upload and Search Files**: Navigate to `http://localhost:8000` in your browser to access the file upload and search functionality.
 
-## Pending Feature
-**PDF Viewer**: Implementing a PDF viewer is still pending.
+**Check and Explore Minio**: Navigate to `http://localhost:9001` in your browser to access minio console.
 
 ### Samples
 

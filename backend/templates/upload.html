@@ -24,6 +24,26 @@ Upload and Search Files
         <!-- Dynamically populated list of files -->
     </ul>
 
+    <!-- View Content Modal -->
+    <div class="modal" id="viewContentModal" tabindex="-1" role="dialog" aria-labelledby="viewContentModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="viewContentModalLabel">File Content</h5>
+                    <!-- <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button> -->
+                </div>
+                <div class="modal-body">
+                    <pre id="fileContent">Loading...</pre>
+                </div>
+                <!-- <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div> -->
+            </div>
+        </div>
+    </div>
+
     {% if error %}
         <p class="error-message mt-3">{{ error }}</p>
     {% endif %}
@@ -32,6 +52,7 @@ Upload and Search Files
 {% block scripts %}
 <script>
     $(document).ready(function() {
+        // Function to fetch files from the server
         function fetchFiles(query = '') {
             $.ajax({
                 url: '/search/',
@@ -49,7 +70,8 @@ Upload and Search Files
                                     <strong>File Type:</strong> ${file.file_type} <br>
                                     <strong>File Size:</strong> ${file.file_size} bytes <br>
                                     <strong>Source Zip File Name:</strong> ${file.source_zip_file_name} <br>
-                                    <a href="/download/${file.file_name}" class="btn btn-secondary btn-sm float-right">Download</a>
+                                    <button class="btn btn-info btn-sm float-right" onclick="viewFileContent('${file.obj_storage_id}')">View</button>
+                                    <a href="/download/${file.obj_storage_id}" class="btn btn-secondary btn-sm float-right mr-2" target="_blank">Download</a>
                                 </li>`;
 
                             fileList.append(listItem);
@@ -64,39 +86,29 @@ Upload and Search Files
             });
         }
 
-        // Fetch all files on page load
         fetchFiles();
 
-        $('#uploadForm').on('submit', function(e) {
-            e.preventDefault();
-
-            var formData = new FormData(this);
-            $('#loadingModal').modal('show');
+        // Function to view file content
+        window.viewFileContent = function(obj_storage_id) {
+            $('#loadingModal').modal('show'); // Show the loader
 
             $.ajax({
-                url: '/upload/',
-                type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
+                url: `/view/${obj_storage_id}`,
+                type: 'GET',
                 success: function(response) {
-                    showSnackbar("File uploaded successfully!");
-                    $('#loadingModal').modal('hide');
-                    // Fetch updated list of files
-                    fetchFiles();
+                    $('#fileContent').text(response.file_content);
+                    $('#viewContentModal').modal('show');
                 },
                 error: function(jqXHR, textStatus, errorThrown) {
-                    showSnackbar("Failed to upload file: " + errorThrown);
-                    $('#loadingModal').modal('hide');
+                    showSnackbar("Failed to fetch file content: " + errorThrown);
+                },
+                complete: function() {
+                    $('#loadingModal').modal('hide'); // Hide the loader when done
                 }
             });
-        });
+        };
 
-        $('#searchField').on('input', function() {
-            var query = $(this).val();
-            fetchFiles(query);
-        });
-
+        // Function to show snackbar messages
         function showSnackbar(message) {
             var snackbar = $('#snackbar');
             snackbar.text(message);
@@ -105,7 +117,38 @@ Upload and Search Files
                 snackbar.removeClass('show');
             }, 3000);
         }
+
+        // Handle form submission
+        $('#uploadForm').on('submit', function(e) {
+            e.preventDefault();
+
+            var formData = new FormData(this);
+            $('#loadingModal').modal('show'); // Show the loader
+
+            $.ajax({
+                url: '/upload/',
+                type: 'PUT',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    showSnackbar("File uploaded successfully!");
+                    fetchFiles();
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    showSnackbar("Failed to upload file: " + errorThrown);
+                },
+                complete: function() {
+                    $('#loadingModal').modal('hide'); // Hide the loader
+                }
+            });
+        });
+
+        // Handle search input
+        $('#searchField').on('input', function() {
+            var query = $(this).val();
+            fetchFiles(query);
+        });
     });
 </script>
-
 {% endblock %}

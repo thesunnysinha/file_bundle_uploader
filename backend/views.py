@@ -1,27 +1,29 @@
 import io
-from fastapi import APIRouter, Request, UploadFile, File, Query, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
-import boto3
-from botocore.exceptions import NoCredentialsError
+import mimetypes
+from fastapi import APIRouter, Request, UploadFile, Query, File, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from config.celery_config import celery_app
-from config.config import S3_BUCKET, AWS_ACCESS_KEY, AWS_SECRET_KEY, S3_FINAL_BUCKET, templates
+from config.config import templates, MINIO_BUCKET
 from config.elasticsearch_config import es
-from main import db_dependency
+from config.minio_config import minio_client
+from minio.error import S3Error
+from config.database import db_dependency
+from models.files import Files
 
 class UploadView:
     def __init__(self):
         # Register API routes
         self.router = APIRouter()
         self.router.add_api_route("/", self.get_upload_form, methods=["GET"], response_class=HTMLResponse)
-        self.router.add_api_route("/upload/", self.upload_zipfile, methods=["POST"], response_class=HTMLResponse)
-        self.router.add_api_route("/upload/", self.upload_zipfile_put, methods=["PUT"], response_class=JSONResponse)
+        self.router.add_api_route("/upload/", self.upload_zipfile, methods=["PUT"], response_class=JSONResponse)
         self.router.add_api_route("/search/", self.search_files, methods=["GET"], response_class=JSONResponse)
-        self.router.add_api_route("/download/{file_name}", self.download_file, methods=["GET"])
-        
+        self.router.add_api_route("/download/{obj_storage_id}", self.download_file, methods=["GET"])
+        self.router.add_api_route("/view/{obj_storage_id}", self.view_file_content, methods=["GET"])
+
     async def get_upload_form(self, request: Request):
         return templates.TemplateResponse("upload.html", {"request": request})
 
-    async def upload_zipfile_put(self, request: Request, file: UploadFile = FastAPIFile(...), db: db_dependency):
+    async def upload_zipfile(self, file: UploadFile = File(...)):
         permitted_types = ["application/zip", "application/x-zip-compressed"]
         if file.content_type not in permitted_types:
             return JSONResponse({"error": "Invalid file type. Only zip files are allowed."}, status_code=400)
@@ -42,11 +44,11 @@ class UploadView:
             # Trigger Celery task for post-processing
             celery_app.send_task('tasks.process_metadata', args=[zip_filename])
 
-        except NoCredentialsError:
-            return JSONResponse({"error": "Credentials not available"}, status_code=500)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
         return JSONResponse({"message": "File uploaded and processed successfully."}, status_code=200)
-    
+
     async def search_files(self, q: str = Query(None)):
         if not q:
             query_body = {
@@ -79,39 +81,63 @@ class UploadView:
 
         # Prepare the response with the required fields
         results = [{
-            "file_name": hit["_source"]["file_name"],
-            "file_type": hit["_source"]["file_type"],
-            "file_size": hit["_source"]["file_size"],
-            "source_zip_file_name": hit["_source"]["source_zip_file_name"],
-            "obj_storage_id": hit["_source"]["obj_storage_id"]
+            "file_name": hit["_source"].get("file_name"),
+            "file_type": hit["_source"].get("file_type"),
+            "file_size": hit["_source"].get("file_size"),
+            "source_zip_file_name": hit["_source"].get("source_zip_file_name"),
+            "obj_storage_id": hit["_source"].get("obj_storage_id"),
+            "content": hit["_source"].get("content")
         } for hit in hits]
 
         return JSONResponse({"files": results}, status_code=200)
-            
-    async def download_file(self, file_name: str):
-        file_obj = minio_client.get_object(MINIO_BUCKET, file_name)
-        return FileResponse(file_obj, media_type='application/octet-stream', filename=file_name)
 
+    async def download_file(self, obj_storage_id: str, db: db_dependency):
+        try:
+            # Try to get the file information from the database
+            file_info = db.query(Files).filter(Files.obj_storage_id == obj_storage_id).first()
 
-    # async def view_file(self, request: Request, file_name: str):
-    #     s3_client = configure_s3()
-    #     try:
-    #         file_obj = s3_client.get_object(Bucket=S3_FINAL_BUCKET, Key=file_name)
-    #         content_type = file_obj.get('ContentType', 'application/octet-stream')
-    #         file_body = file_obj['Body'].read()
+            if file_info:
+                filename = file_info.file_name
+                content_type = file_info.file_type
+            else:
+                # Fallback to the existing method if file is not found in the database
+                stat = minio_client.stat_object(MINIO_BUCKET, obj_storage_id)
+                filename = stat.metadata.get("X-Amz-Meta-Filename", obj_storage_id)
+                content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 
-    #         content_disposition = 'inline'
-    #         if 'text' in content_type:
-    #             content = file_body.decode('utf-8', errors='replace')
-    #             return templates.TemplateResponse("view_file.html", {"request": request, "file_name": file_name, "content": content})
+            # Get the object from MinIO
+            response = minio_client.get_object(MINIO_BUCKET, obj_storage_id)
 
-    #         return StreamingResponse(
-    #             io.BytesIO(file_body),
-    #             media_type=content_type,
-    #             headers={"Content-Disposition": f"{content_disposition}; filename={file_name}"}
-    #         )
+            headers = {
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Content-Type': content_type
+            }
 
-    #     except s3_client.exceptions.NoSuchKey:
-    #         raise HTTPException(status_code=404, detail="File not found")
-    #     except NoCredentialsError:
-    #         raise HTTPException(status_code=403, detail="Credentials not available")
+            return StreamingResponse(response, media_type=content_type, headers=headers)
+        except S3Error as err:
+            raise HTTPException(status_code=500, detail="Failed to download file") from err
+
+    async def view_file_content(self, obj_storage_id: str):
+        try:
+            # Ensure obj_storage_id is a string
+            obj_storage_id = str(obj_storage_id)
+
+            # Query Elasticsearch for file content using obj_storage_id
+            search_body = {
+                "query": {
+                    "match": {
+                        "obj_storage_id": obj_storage_id
+                    }
+                }
+            }
+
+            response = es.search(index="files", body=search_body)
+
+            if response['hits']['hits']:
+                file_content = response['hits']['hits'][0]['_source'].get('content', 'No content available')
+                return {"file_content": file_content}
+            else:
+                raise HTTPException(status_code=404, detail="File not found in Elasticsearch")
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Unable to serialize to JSON: {e}")

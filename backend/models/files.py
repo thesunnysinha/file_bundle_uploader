@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, Integer, String, DateTime
 from config.database import Base
 
-class File(Base):
+class Files(Base):
     __tablename__ = 'files'
+
     id = Column(Integer, primary_key=True, index=True)
     file_name = Column(String, index=True)
     file_size = Column(Integer)
@@ -10,4 +11,4 @@ class File(Base):
     file_type = Column(String)
     source_zip_file_name = Column(String)
     obj_storage_id = Column(String)
-    content = Column(Text)
+    content = Column(String)

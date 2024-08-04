@@ -1,10 +1,9 @@
-FROM tiangolo/uvicorn-gunicorn-fastapi:python3.10
+FROM tiangolo/uvicorn-gunicorn-fastapi:python3.11
 
 COPY requirements.txt /tmp/requirements.txt
 
 # Create a virtual environment
 RUN python -m venv /venv && \
-    /venv/bin/pip install --upgrade pip && \
     /venv/bin/pip install -r /tmp/requirements.txt && \
     rm -rf /tmp
 

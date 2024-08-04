@@ -1,18 +1,16 @@
 import io
 import zipfile
 from datetime import datetime
-from minio import Minio
 from minio.error import S3Error
 from config.minio_config import minio_client, MINIO_BUCKET
 from config.elasticsearch_config import es
-from models.file import File
+from models.files import Files
 from config.database import SessionLocal
 from sqlalchemy.orm import Session
-from celery import Celery
-import textract
 import PyPDF2
 import docx
 from config.celery_config import celery_app
+import uuid
 
 # Helper functions to process different file types
 def process_text_file(file_content):
@@ -46,13 +44,87 @@ def process_metadata(zip_filename):
         chunk_size = 128 * 1024 * 1024  # 128 MB
 
         # Create a BytesIO buffer to hold chunks of the ZIP file
-        buffer = BytesIO()
+        buffer = io.BytesIO()
+        
+        db: Session = SessionLocal()
+        
+        try:
 
-        for chunk in zip_data.stream(16 * 1024):  # 16 KB chunks
-            buffer.write(chunk)
-            total_size += len(chunk)
+            for chunk in zip_data.stream(16 * 1024):  # 16 KB chunks
+                buffer.write(chunk)
+                total_size += len(chunk)
 
-            if total_size >= chunk_size:
+                if total_size >= chunk_size:
+                    buffer.seek(0)
+                    with zipfile.ZipFile(buffer, 'r') as zip_file:
+                        for file_info in zip_file.infolist():
+                            if file_info.filename.endswith(('.pdf', '.txt', '.doc')):
+                                with zip_file.open(file_info) as file:
+                                    file_name = file_info.filename
+                                    file_content = file.read()
+                                    file_size = len(file_content)
+                                    file_type = file_info.filename.split('.')[-1].lower()
+
+                                    # Process content based on file type
+                                    if file_type == 'txt':
+                                        content = process_text_file(file_content)
+                                    elif file_type == 'pdf':
+                                        content = process_pdf_file(file_content)
+                                    elif file_type == 'doc':
+                                        content = process_doc_file(file_content)
+                                    else:
+                                        continue
+
+                                    # Ensure content is not None or empty
+                                    content = content.strip() if content else None
+
+                                    # Upload file to MinIO
+                                    obj_storage_id = str(uuid.uuid4())
+                                    minio_client.put_object(
+                                        MINIO_BUCKET,
+                                        obj_storage_id,
+                                        io.BytesIO(file_content),
+                                        file_size,
+                                        content_type="application/octet-stream"
+                                    )
+
+                                    # Save metadata to SQL database
+                                    new_file = Files(
+                                        file_name=file_name,
+                                        file_size=file_size,
+                                        file_created_date=datetime.now(),
+                                        file_type=file_type,
+                                        source_zip_file_name=zip_filename,
+                                        obj_storage_id=obj_storage_id
+                                    )
+                                    try:
+                                        db.add(new_file)
+                                        db.commit()
+                                        print(f"Saved to database: {new_file}")
+                                    except Exception as e:
+                                        db.rollback()
+                                        print(f"Failed to save to database: {e}")
+
+                                    # Index document in Elasticsearch
+                                    doc = {
+                                        'file_name': file_name,
+                                        'file_size': file_size,
+                                        'file_created_date': datetime.now(),
+                                        'file_type': file_type,
+                                        'source_zip_file_name': zip_filename,
+                                        'obj_storage_id':obj_storage_id,
+                                        'content': content
+                                    }
+                                    
+                                    print(f"doc --> {doc}")
+                                    es.index(index="files", body=doc)
+
+                    # Reset buffer and total size after processing
+                    buffer = io.BytesIO()
+                    total_size = 0
+
+            # Clean up any remaining data in the buffer
+            if total_size > 0:
                 buffer.seek(0)
                 with zipfile.ZipFile(buffer, 'r') as zip_file:
                     for file_info in zip_file.infolist():
@@ -73,19 +145,36 @@ def process_metadata(zip_filename):
                                 else:
                                     continue
 
+                                # Ensure content is not None or empty
+                                content = content.strip() if content else None
+
+                                # Upload file to MinIO
+                                obj_storage_id = str(uuid.uuid4())
+                                minio_client.put_object(
+                                    MINIO_BUCKET,
+                                    obj_storage_id,
+                                    io.BytesIO(file_content),
+                                    file_size,
+                                    content_type="application/octet-stream"
+                                )
+
                                 # Save metadata to SQL database
-                                db: Session = SessionLocal()
-                                new_file = File(
+                                new_file = Files(
                                     file_name=file_name,
                                     file_size=file_size,
                                     file_created_date=datetime.now(),
                                     file_type=file_type,
                                     source_zip_file_name=zip_filename,
-                                    obj_storage_id=zip_filename  # Store the ZIP filename as the object storage ID
+                                    obj_storage_id=obj_storage_id
                                 )
-                                db.add(new_file)
-                                db.commit()
-                                db.close()
+                                
+                                try:
+                                    db.add(new_file)
+                                    db.commit()
+                                    print(f"Saved to database: {new_file}")
+                                except Exception as e:
+                                    db.rollback()
+                                    print(f"Failed to save to database: {e}")
 
                                 # Index document in Elasticsearch
                                 doc = {
@@ -94,63 +183,17 @@ def process_metadata(zip_filename):
                                     'file_created_date': datetime.now(),
                                     'file_type': file_type,
                                     'source_zip_file_name': zip_filename,
-                                    'content': content  # Add content to Elasticsearch for searchability
+                                    'obj_storage_id':obj_storage_id,
+                                    'content': content
                                 }
-                                es.index(index="files", doc_type="_doc", body=doc)
+                                
+                                print(f"doc --> {doc}")
+                                es.index(index="files", body=doc)
 
-                # Reset buffer and total size after processing
-                buffer = BytesIO()
-                total_size = 0
+            # Delete the ZIP file from MinIO
+            minio_client.remove_object(MINIO_BUCKET, zip_filename)
 
-        # Clean up any remaining data in the buffer
-        if total_size > 0:
-            buffer.seek(0)
-            with zipfile.ZipFile(buffer, 'r') as zip_file:
-                for file_info in zip_file.infolist():
-                    if file_info.filename.endswith(('.pdf', '.txt', '.doc')):
-                        with zip_file.open(file_info) as file:
-                            file_name = file_info.filename
-                            file_content = file.read()
-                            file_size = len(file_content)
-                            file_type = file_info.filename.split('.')[-1].lower()
-
-                            # Process content based on file type
-                            if file_type == 'txt':
-                                content = process_text_file(file_content)
-                            elif file_type == 'pdf':
-                                content = process_pdf_file(file_content)
-                            elif file_type == 'doc':
-                                content = process_doc_file(file_content)
-                            else:
-                                continue
-
-                            # Save metadata to SQL database
-                            db: Session = SessionLocal()
-                            new_file = File(
-                                file_name=file_name,
-                                file_size=file_size,
-                                file_created_date=datetime.now(),
-                                file_type=file_type,
-                                source_zip_file_name=zip_filename,
-                                obj_storage_id=zip_filename
-                            )
-                            db.add(new_file)
-                            db.commit()
-                            db.close()
-
-                            # Index document in Elasticsearch
-                            doc = {
-                                'file_name': file_name,
-                                'file_size': file_size,
-                                'file_created_date': datetime.now(),
-                                'file_type': file_type,
-                                'source_zip_file_name': zip_filename,
-                                'content': content
-                            }
-                            es.index(index="files", doc_type="_doc", body=doc)
-
-        # Delete the ZIP file from MinIO
-        minio_client.remove_object(MINIO_BUCKET, zip_filename)
-
+        finally:
+            db.close()
     except S3Error as e:
         print(f"Error processing ZIP file: {e}")
