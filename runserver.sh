@@ -15,5 +15,11 @@ sudo docker volume prune -f
 # Remove all unused Docker data, including images
 sudo docker system prune -a -f
 
+
+sudo docker volume rm file_bundle_uploader_elasticsearchdata
+sudo docker volume rm file_bundle_uploader_filebundleuploaderdata
+sudo docker volume rm file_bundle_uploader_miniodata
+
+
 # Rebuild and start Docker Compose services
 sudo docker-compose up --build
